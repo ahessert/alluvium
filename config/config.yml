@@ -1,0 +1,6 @@
+default:
+    TURBINE_API_URL: http://localhost:8080/
+    DATA_STREAMING_DURATION: 5
+    POLL_INTERVAL: 1
+    TOTAL_SAMPLES_FOR_TRAINING: 100
+    
