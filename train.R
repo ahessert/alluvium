@@ -1,5 +1,6 @@
 require(data.table)
 require(magrittr)
+require(RJSONIO)
 
 source("./config/config.R")
 source("./functions/plot_functions.R")
@@ -41,4 +42,4 @@ training_sets <- lapply(c(1:RESAMPLE_COUNT), create_training_sets, dt=train)
 models <- lapply(training_sets, fit_regregression)
 coefficients <- rowMeans(data.frame(lapply(models, function(x) {x$coefficients})), na.rm=T)
 
-write(RJSONIO::toJSON(coefficients), COEFFICIENT_PATH)
+# write(RJSONIO::toJSON(coefficients), COEFFICIENT_PATH)
