@@ -1,8 +1,10 @@
 make_prediction <- function(prediction_records, turbine_endpoint, coefficients) {
-  prediction_records <- clean_records(prediction_records)
-  formatted_predictors <- format_predictors(prediction_records)
-  prediction <- apply_coefficients(formatted_predictors, coefficients)
-  response <- GET(turbine_endpoint, query = list("ts"=prediction_records[1, ts], "value"=prediction))
+  prediction_records %>%
+    clean_records %>%
+    format_predictors %>%
+    apply_coefficients(coefficients) %>%
+    {.} -> prediction
+  GET(turbine_endpoint, query = list("ts"=prediction_records[1, ts], "value"=prediction))
 }
 
 format_new_row <- function(new_records, rownum) {

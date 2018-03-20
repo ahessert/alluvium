@@ -12,6 +12,7 @@ source("./functions/realtime_predictions.R")
 
 TURBINE_API_URL <- config$TURBINE_API_URL
 API_DURATION <- config$DATA_STREAMING_DURATION
+TOTAL_RUN_TIME <- config$PREDICTION_SERVICE_UP_TIME * 60
 POLL_INTERVAL <- config$POLL_INTERVAL
 START_URL <- paste(TURBINE_API_URL, "start?duration=", API_DURATION, sep="")
 POLL_URL <- paste(TURBINE_API_URL, "turbine", sep="")
@@ -19,12 +20,13 @@ SUBMIT_URL <- paste(TURBINE_API_URL, "prediction", sep="")
 
 COEFFICIENTS <- read_coeficients(COEFFICIENT_PATH)
   
-poll_turbine_endpoint <- function(poll_url) {
+poll_turbine_endpoint <- function(poll_url, timestamps_received) {
   poll_url %>%
-    fromJSON %>%
+    fromJSON %>% 
     data.table %>%
-    {.} -> new_data
-  return(new_data)
+    remove_redundant_records(timestamps_received) %>%
+  {.} -> new_records
+  return(new_records)
 }
 
 remove_redundant_records <- function(new_records, timestamps_received) {
@@ -33,30 +35,31 @@ remove_redundant_records <- function(new_records, timestamps_received) {
   } else { return(new_records) }
 }
 
+process_new_row <- function(row_num, new_records, turbine_records) {
+  new_records %>%
+    format_new_row(row_num) %>%
+    prepend_to_turbine_records(turbine_records) %>%
+    head(n=180) %>% copy %>%
+    make_prediction(SUBMIT_URL, COEFFICIENTS)
+}
+
 run <- function() {
   
-  start_ts <- Sys.time()
-  execution_duration <- (API_DURATION+3)*60
+  start_ts <- as.numeric(Sys.time())
   turbine_records <- data.table()
   timestamps_received <- c()
-  
   curl(START_URL) %T>% open %>% close()
   
-  while (Sys.time()-start_ts < execution_duration) {
-    new_records <- poll_turbine_endpoint(POLL_URL)
-    new_records <- remove_redundant_records(new_records, timestamps_received)
-    if (new_records[,.N] > 0) {
+  while (as.numeric(Sys.time()) - start_ts < TOTAL_RUN_TIME) {
+    new_records  <- poll_turbine_endpoint(POLL_URL, timestamps_received)
+    
+    if (new_records[,.N] > 0) { 
       cat("Generating", new_records[,.N], "new predictions\n")
       timestamps_received <- c(timestamps_received, new_records[,ts])
-      for (row_num in c(1:new_records[,.N])) {
-        new_row <- format_new_row(new_records, row_num)
-        turbine_records <- prepend_to_turbine_records(new_row, turbine_records)
-        prediction_records <- copy(turbine_records[1:min(180,.N)])
-        make_prediction(prediction_records, SUBMIT_URL, COEFFICIENTS)
-      }
+      lapply(c(1:new_records[,.N]), process_new_row, new_records, turbine_records)
       cat("Complete ... wait for more data...\n")
     }
-    Sys.sleep(POLL_INTERVAL)
+    else { Sys.sleep(POLL_INTERVAL) }
   }
 }
 
